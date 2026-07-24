@@ -19,12 +19,18 @@ function scoreGuess(guess, answer) {
 }
 
 const TILE = {
-  0: { bg: "#2b3240", fg: "#cfd6e4", label: "absent" },
-  1: { bg: "#b89b3e", fg: "#1a1d24", label: "present" },
-  2: { bg: "#4f8a5b", fg: "#f3f6f1", label: "correct" },
+  0: { bg: "var(--wsx-tile-absent-bg)", fg: "var(--wsx-tile-absent-fg)", label: "absent" },
+  1: { bg: "var(--wsx-tile-present-bg)", fg: "var(--wsx-tile-present-fg)", label: "present" },
+  2: { bg: "var(--wsx-tile-correct-bg)", fg: "var(--wsx-tile-correct-fg)", label: "correct" },
 };
 
 const EMPTY = [0, 0, 0, 0, 0];
+const THEME_KEY = "wsx-theme";
+const THEME_OPTIONS = [
+  { key: "system", label: "auto" },
+  { key: "light", label: "light" },
+  { key: "dark", label: "dark" },
+];
 
 // Keep every word consistent with all the guess/marks pairs entered so far.
 function matchingWords(dict, history) {
@@ -95,7 +101,7 @@ function GridRow({ guess, marks, locked, onCycle, onConfirm, onEdit }) {
             <button
               key={c}
               className="wsx-tile"
-              style={{ background: t.bg, color: t.fg }}
+              style={{ background: t.bg, color: t.fg, animationDelay: locked ? `${c * 60}ms` : undefined }}
               disabled={locked}
               onClick={locked ? undefined : () => onCycle(c)}
               aria-label={`${ch}, ${t.label}. Tap to change.`}
@@ -122,6 +128,27 @@ export default function App() {
   // Full word list — lazily loaded only if/when we leave the tree
   const [dict, setDict] = useState(null);
   const [dictFailed, setDictFailed] = useState(false);
+  // Appearance: 'light' | 'dark' | 'system' — persisted, resolved against the OS preference.
+  const [themePref, setThemePref] = useState(() => localStorage.getItem(THEME_KEY) || "system");
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  const resolvedTheme = themePref === "system" ? (systemDark ? "dark" : "light") : themePref;
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+  }, [resolvedTheme]);
+
+  const chooseTheme = useCallback((pref) => {
+    setThemePref(pref);
+    localStorage.setItem(THEME_KEY, pref);
+  }, []);
 
   const view = useMemo(() => computeView(history, dict), [history, dict]);
 
@@ -157,11 +184,34 @@ export default function App() {
   }, []);
 
   const trail = [...history.map((h) => h.guess), view.status === "play" ? view.guess : null].filter(Boolean);
+  const activeThemeIndex = THEME_OPTIONS.findIndex((o) => o.key === themePref);
 
   return (
-    <div className="wsx-root">
+    <div className="wsx-page">
       <style>{CSS}</style>
 
+      <div className="wsx-topbar">
+        <div className="wsx-theme-switch" role="radiogroup" aria-label="Appearance">
+          <span
+            className="wsx-theme-thumb"
+            style={{ transform: `translateX(${activeThemeIndex * 100}%)` }}
+            aria-hidden="true"
+          />
+          {THEME_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              role="radio"
+              aria-checked={themePref === opt.key}
+              className={`wsx-theme-opt ${themePref === opt.key ? "is-active" : ""}`}
+              onClick={() => chooseTheme(opt.key)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="wsx-root">
       <header className="wsx-head">
         <div className="wsx-eyebrow">optimal wordle solver · opens with SALET</div>
         <h1 className="wsx-title">The Oracle</h1>
@@ -171,7 +221,7 @@ export default function App() {
         </p>
       </header>
 
-      <section className="wsx-verdict" aria-live="polite">
+      <section className="wsx-verdict" key={view.guesses} aria-live="polite">
         {view.status === "solved" ? (
           <>
             <div className="wsx-verdict-tag wsx-tag-win">solved{view.offTree ? " · off-tree" : ""}</div>
@@ -242,6 +292,7 @@ export default function App() {
       <p className="wsx-fine">
         Tap a tile to cycle its color. Strategy tree precomputed with Doddle over the standard answer set — most games end in five guesses or fewer. If the real answer falls outside that set, the solver switches to filtering the full word list.
       </p>
+      </div>
     </div>
   );
 }
@@ -254,18 +305,81 @@ const CSS = `
   --wsx-ink: #eef1f6;
   --wsx-dim: #8b94a6;
   --wsx-accent: #d8b24a;
+  --wsx-win: #6fbf7d;
+  --wsx-warn: #d98a8a;
+  --wsx-chip-bg: #232936;
+  --wsx-on-accent: #14171d;
+  --wsx-tile-absent-bg: #2b3240;
+  --wsx-tile-absent-fg: #cfd6e4;
+  --wsx-tile-present-bg: #b89b3e;
+  --wsx-tile-present-fg: #1a1d24;
+  --wsx-tile-correct-bg: #4f8a5b;
+  --wsx-tile-correct-fg: #f3f6f1;
+  --wsx-shadow: 0 12px 28px -16px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme="light"] {
+  --wsx-bg: #f7f8fa;
+  --wsx-panel: #ffffff;
+  --wsx-line: #dfe3ea;
+  --wsx-ink: #1a1d24;
+  --wsx-dim: #667085;
+  --wsx-accent: #a9760f;
+  --wsx-win: #2f8f4e;
+  --wsx-warn: #b23f3f;
+  --wsx-chip-bg: #eef0f4;
+  --wsx-on-accent: #14171d;
+  --wsx-tile-absent-bg: #dbe0e8;
+  --wsx-tile-absent-fg: #374151;
+  --wsx-tile-present-bg: #dfc06a;
+  --wsx-tile-present-fg: #2b2205;
+  --wsx-tile-correct-bg: #6fb873;
+  --wsx-tile-correct-fg: #0f2113;
 }
 * { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--wsx-bg);
+  transition: background-color 0.2s ease;
+}
 .wsx-root {
   max-width: 540px;
   margin: 0 auto;
-  padding: 32px 20px 48px;
-  background: var(--wsx-bg);
+  padding: 40px 20px 48px;
   color: var(--wsx-ink);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  border-radius: 14px;
+  transition: color 0.2s ease;
 }
-.wsx-head { text-align: left; margin-bottom: 28px; }
+.wsx-topbar { display: flex; justify-content: flex-end; padding: 20px 28px 0; }
+.wsx-head { text-align: left; margin-bottom: 32px; }
+.wsx-theme-switch {
+  position: relative;
+  flex-shrink: 0;
+  display: flex; gap: 2px;
+  background: var(--wsx-panel);
+  border: 1px solid var(--wsx-line);
+  border-radius: 8px;
+  padding: 3px;
+}
+.wsx-theme-thumb {
+  position: absolute;
+  top: 3px; left: 3px; bottom: 3px;
+  width: calc((100% - 6px) / 3);
+  background: var(--wsx-accent);
+  border-radius: 6px;
+  transition: transform 0.2s ease;
+  z-index: 0;
+}
+.wsx-theme-opt {
+  position: relative; z-index: 1;
+  border: none; background: none; color: var(--wsx-dim);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 6px 9px; border-radius: 6px; cursor: pointer;
+  transition: color 0.15s ease;
+}
+.wsx-theme-opt:hover { color: var(--wsx-ink); }
+.wsx-theme-opt.is-active { color: var(--wsx-on-accent); font-weight: 700; }
+.wsx-theme-opt:focus-visible { outline: 2px solid var(--wsx-accent); outline-offset: 2px; }
 .wsx-eyebrow {
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
@@ -282,16 +396,22 @@ const CSS = `
   border: 1px solid var(--wsx-line);
   border-radius: 12px;
   padding: 18px 20px;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
+  box-shadow: var(--wsx-shadow);
   text-align: center;
+  animation: wsx-fade-up 0.25s ease both;
+}
+@keyframes wsx-fade-up {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 .wsx-verdict-tag {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--wsx-dim); margin-bottom: 8px;
 }
-.wsx-tag-win { color: #6fbf7d; }
-.wsx-tag-warn { color: #d98a8a; }
+.wsx-tag-win { color: var(--wsx-win); }
+.wsx-tag-warn { color: var(--wsx-warn); }
 .wsx-verdict-word {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 46px; font-weight: 700; letter-spacing: 0.22em;
@@ -313,33 +433,40 @@ const CSS = `
   font-family: ui-monospace, Menlo, monospace;
   font-size: 26px; font-weight: 700;
   cursor: pointer;
-  transition: transform 0.08s ease, filter 0.12s ease;
+  transition: transform 0.08s ease, filter 0.12s ease, background-color 0.15s ease, color 0.15s ease;
   display: flex; align-items: center; justify-content: center;
 }
 .wsx-tile:hover:not(:disabled) { filter: brightness(1.12); }
 .wsx-tile:active:not(:disabled) { transform: scale(0.94); }
 .wsx-tile:disabled { cursor: default; }
 .wsx-tile:focus-visible { outline: 2px solid var(--wsx-accent); outline-offset: 2px; }
-.is-locked .wsx-tile { opacity: 0.82; }
+.is-locked .wsx-tile { opacity: 0.82; animation: wsx-reveal 0.35s ease both; }
+@keyframes wsx-reveal {
+  0% { transform: rotateX(90deg); }
+  60% { transform: rotateX(-8deg); }
+  100% { transform: rotateX(0deg); }
+}
 
 .wsx-rowctl { width: 64px; flex-shrink: 0; text-align: right; }
 .wsx-confirm {
-  background: var(--wsx-accent); color: #14171d;
+  background: var(--wsx-accent); color: var(--wsx-on-accent);
   border: none; border-radius: 7px; padding: 9px 12px;
   font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
   font-family: ui-monospace, Menlo, monospace; letter-spacing: 0.03em;
+  transition: filter 0.15s ease;
 }
 .wsx-confirm:hover { filter: brightness(1.06); }
 .wsx-link {
   background: none; border: none; color: var(--wsx-dim);
   font-size: 12px; cursor: pointer; text-decoration: underline;
   text-underline-offset: 3px; font-family: inherit;
+  transition: color 0.15s ease;
 }
 .wsx-link:hover { color: var(--wsx-ink); }
 
 .wsx-foot {
   display: flex; align-items: center; justify-content: space-between;
-  border-top: 1px solid var(--wsx-line); padding-top: 18px;
+  border-top: 1px solid var(--wsx-line); padding-top: 24px;
 }
 .wsx-legend { display: flex; gap: 16px; font-size: 12px; color: var(--wsx-dim); }
 .wsx-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -348,27 +475,35 @@ const CSS = `
   background: none; border: 1px solid var(--wsx-line); color: var(--wsx-ink);
   border-radius: 7px; padding: 8px 14px; font-size: 12.5px; cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 .wsx-reset:hover { border-color: var(--wsx-dim); }
 .wsx-fine {
-  margin: 18px 0 0; font-size: 11.5px; line-height: 1.5;
+  margin: 24px 0 0; font-size: 11.5px; line-height: 1.5;
   color: var(--wsx-dim); opacity: 0.8;
 }
 button:focus-visible { outline: 2px solid var(--wsx-accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .wsx-tile { transition: none; }
+  .is-locked .wsx-tile { animation: none; }
+  .wsx-verdict { animation: none; }
+  .wsx-confirm, .wsx-reset, .wsx-link { transition: none; }
+  html, body, .wsx-root, .wsx-theme-opt, .wsx-theme-thumb { transition: none; }
 }
 @media (max-width: 420px) {
   .wsx-title { font-size: 32px; }
   .wsx-verdict-word { font-size: 38px; }
   .wsx-tile { font-size: 22px; }
+  .wsx-theme-opt { padding: 5px 7px; font-size: 9.5px; }
+  .wsx-topbar { padding: 16px 16px 0; }
 }
 .wsx-cands {
-  margin: -6px 0 22px;
+  margin: -6px 0 24px;
   background: var(--wsx-panel);
   border: 1px solid var(--wsx-line);
   border-radius: 12px;
   padding: 14px 16px;
+  box-shadow: var(--wsx-shadow);
 }
 .wsx-cands-label {
   font-family: ui-monospace, Menlo, monospace;
@@ -380,10 +515,10 @@ button:focus-visible { outline: 2px solid var(--wsx-accent); outline-offset: 2px
   font-family: ui-monospace, Menlo, monospace;
   font-size: 13px; letter-spacing: 0.08em;
   padding: 5px 9px; border-radius: 6px;
-  background: #232936; color: var(--wsx-dim); border: 1px solid transparent;
+  background: var(--wsx-chip-bg); color: var(--wsx-dim); border: 1px solid transparent;
 }
 .wsx-cand.is-best {
-  color: #14171d; background: var(--wsx-accent);
+  color: var(--wsx-on-accent); background: var(--wsx-accent);
   border-color: var(--wsx-accent); font-weight: 700;
 }
 .wsx-cand-more { background: transparent; }

@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wordle Solver</title>
+    <style>
+      html[data-theme="light"], html[data-theme="light"] body { background: #f7f8fa; }
+      html:not([data-theme="light"]), html:not([data-theme="light"]) body { background: #14171d; }
+      body { margin: 0; }
+    </style>
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("wsx-theme");
+          var theme = saved && saved !== "system"
+            ? saved
+            : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
